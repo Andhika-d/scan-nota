@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/background">
-<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:gravity="center_vertical" android:padding="4dp">
-<com.google.android.material.button.MaterialButton android:id="@+id/btnBack" style="@style/Widget.Material3.Button.IconButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="Kembali" app:icon="@drawable/ic_back" app:iconTint="@color/white" />
-<TextView android:id="@+id/title" android:layout_width="0dp" android:layout_height="wrap_content" android:text="" android:layout_weight="1" android:paddingStart="8dp" android:textColor="@color/white" android:textSize="20sp" android:textStyle="bold"/>
-<com.google.android.material.button.MaterialButton android:id="@+id/btnDelete" style="@style/Widget.Material3.Button.IconButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="Hapus nota" app:icon="@drawable/ic_delete" app:iconTint="@color/white" />
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:padding="4dp">
+<com.google.android.material.button.MaterialButton android:id="@+id/btnBack" style="@style/Widget.Material3.Button.IconButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="Kembali" app:icon="@drawable/ic_back" app:iconTint="@color/text" />
+<TextView android:id="@+id/title" android:layout_width="0dp" android:layout_height="wrap_content" android:text="" android:layout_weight="1" android:paddingStart="8dp" style="@style/Title" android:textSize="20sp"/>
+<com.google.android.material.button.MaterialButton android:id="@+id/btnDelete" style="@style/Widget.Material3.Button.IconButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="Hapus nota" app:icon="@drawable/ic_delete" app:iconTint="@color/text" />
 </LinearLayout>
 <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:indeterminate="true" android:visibility="gone" />
 <androidx.core.widget.NestedScrollView android:id="@+id/form" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
-<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="16dp" android:paddingBottom="16dp">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingBottom="16dp">
 <com.google.android.material.card.MaterialCardView android:id="@+id/previewCard" style="@style/Card" android:layout_width="match_parent" android:layout_height="200dp" android:layout_marginTop="12dp" android:visibility="gone">
-<ImageView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Foto nota" android:scaleType="fitCenter" />
+<ImageView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Foto nota, ketuk untuk memperbesar" android:scaleType="fitCenter" />
 </com.google.android.material.card.MaterialCardView>
 <com.google.android.material.card.MaterialCardView style="@style/Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" >
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
@@ -24,14 +24,15 @@
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Daftar barang" style="@style/Heading"/>
 <LinearLayout android:id="@+id/items" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-<com.google.android.material.button.MaterialButton android:id="@+id/btnAddItem" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="+ Tambah barang" />
+<com.google.android.material.button.MaterialButton android:id="@+id/btnAddItem" style="@style/Button.Outline" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="+ Tambah barang" />
 </LinearLayout>
 </com.google.android.material.card.MaterialCardView><com.google.android.material.card.MaterialCardView style="@style/Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" >
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
 <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Total nota (Rp)">
 <com.google.android.material.textfield.TextInputEditText android:id="@+id/inputTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="number" android:saveEnabled="false" android:maxLength="12" />
 </com.google.android.material.textfield.TextInputLayout>
-<TextView android:id="@+id/txtSumHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:textColor="@color/warning" android:paddingVertical="10dp" android:clickable="true" android:focusable="true" android:visibility="gone"/>
+<TextView android:id="@+id/txtSumHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:textColor="@color/warning" android:background="@drawable/bg_note_warn" android:padding="12dp" android:layout_marginTop="8dp" android:clickable="true" android:focusable="true" android:visibility="gone"/>
+<TextView android:id="@+id/txtMatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Jumlah barang cocok dengan total. Tetap cek sekilas sebelum disimpan." android:textColor="@color/primary_dark" android:background="@drawable/bg_note_ok" android:padding="12dp" android:layout_marginTop="8dp" android:visibility="gone"/>
 </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
 </LinearLayout>

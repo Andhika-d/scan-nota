@@ -1,129 +1,139 @@
 package com.example.scannota
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
     private val store by lazy { NotaStore(this) }
-    private val photoUri: Uri by lazy { uriFor(File(cacheDir, "foto.jpg")) }
+    private val accounts by lazy { Accounts(this) }
+    private val cameraFile by lazy { File(cacheDir, "kamera.jpg") }
     private var month = Format.today().take(7)
+    private var summaryTab = false
 
     private val takePhoto =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-            if (success) openEditor(image = photoUri)
+            if (success) openEditor(photo = cameraFile)
         }
 
     private val pickImage =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            if (uri != null) openEditor(image = uri)
+            if (uri != null) importPhoto(uri)
+        }
+
+    private val documentScan =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+                ?.pages?.firstOrNull()?.let { importPhoto(it.imageUri) }
         }
 
     private val editor =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            // Lompat ke bulan nota yang baru disimpan supaya langsung terlihat
+            // Lompat ke bulan nota yang baru disimpan supaya langsung terlihat di rekap
             result.data?.getStringExtra(EditActivity.EXTRA_MONTH)?.let { month = it }
             render()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (accounts.current() == null) return logout()
         setContentView(R.layout.activity_main)
         savedInstanceState?.getString("month")?.let { month = it }
+        summaryTab = savedInstanceState?.getBoolean("rekap") ?: false
 
-        click(R.id.btnCamera) {
-            try {
-                takePhoto.launch(photoUri)
-            } catch (e: Exception) {
-                toast("Kamera tidak bisa dibuka")
-            }
-        }
-        click(R.id.btnGallery) { pickImage.launch("image/*") }
-        click(R.id.btnManual) { openEditor() }
+        click(R.id.tabHome) { showTab(summary = false) }
+        click(R.id.tabSummary) { showTab(summary = true) }
+        click(R.id.btnSeeAll) { showTab(summary = true) }
+        click(R.id.btnScan) { showScanOptions() }
         click(R.id.btnPrev) { month = Format.shiftMonth(month, -1); render() }
         click(R.id.btnNext) { month = Format.shiftMonth(month, 1); render() }
-        click(R.id.btnMenu) { showMenu(it) }
-        click(R.id.btnSample) { loadSample() }
-
-        findViewById<BottomNavigationView>(R.id.nav).setOnItemSelectedListener {
-            val history = it.itemId == R.id.tabHistory
-            show(R.id.pageHistory, history)
-            show(R.id.actions, history)
-            show(R.id.pageSummary, !history)
-            true
-        }
+        click(R.id.btnProfile) { showProfile() }
+        click(R.id.btnExport) { export(store.all().filter { it.month == month }, "rekap-nota-$month") }
+        showTab(summaryTab)
     }
 
     override fun onResume() {
         super.onResume()
-        // Tab yang dipulihkan sistem harus cocok dengan halaman yang tampil
-        val nav = findViewById<BottomNavigationView>(R.id.nav)
-        nav.selectedItemId = nav.selectedItemId
-        render()
+        if (accounts.current() != null) render()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString("month", month)
+        outState.putBoolean("rekap", summaryTab)
+    }
+
+    private fun showTab(summary: Boolean) {
+        summaryTab = summary
+        show(R.id.pageHome, !summary)
+        show(R.id.pageSummary, summary)
+        listOf(R.id.tabHome to !summary, R.id.tabSummary to summary).forEach { (id, active) ->
+            val tab = findViewById<MaterialButton>(id)
+            val color = ContextCompat.getColorStateList(
+                this, if (active) R.color.primary else R.color.text_soft
+            )
+            tab.setTextColor(color)
+            tab.iconTint = color
+            tab.isSelected = active
+        }
     }
 
     private fun render() {
         val all = store.all()
-        val current = all.filter { it.month == month }
-        val total = current.sumOf { it.total }
+        val name = accounts.current()?.name.orEmpty()
+        text(R.id.txtName, name)
+        text(R.id.btnProfile, name.split(" ").filter { it.isNotEmpty() }.take(2)
+            .joinToString("") { it.take(1).uppercase() })
 
-        text(R.id.txtMonth, Format.month(month))
-        text(R.id.txtTotal, Format.rupiah(total))
-        text(R.id.txtCount, if (current.isEmpty()) "Belum ada nota" else "${current.size} nota tersimpan")
-
-        val list = findViewById<LinearLayout>(R.id.list)
-        list.removeAllViews()
-        current.forEach { nota ->
-            val row = inflate(R.layout.row_nota, list)
-            row.text(R.id.rowInitial, nota.store.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?")
-            row.text(R.id.rowStore, nota.store)
-            row.text(R.id.rowDetail, "${Format.date(nota.date)} • ${nota.items.size} barang")
-            row.text(R.id.rowTotal, Format.rupiah(nota.total))
-            row.setOnClickListener { openEditor(id = nota.id) }
-            list.addView(row)
-        }
-        show(R.id.empty, current.isEmpty())
-        show(R.id.btnSample, all.isEmpty())
-
-        renderSummary(all, current, total)
-    }
-
-    private fun renderSummary(all: List<Nota>, current: List<Nota>, total: Long) {
+        // Beranda: selalu bulan berjalan
+        val now = Format.today().take(7)
+        val thisMonth = all.filter { it.month == now }
+        text(R.id.txtHeroLabel, "Belanja ${Format.month(now)}")
+        text(R.id.txtHeroTotal, Format.rupiah(thisMonth.sumOf { it.total }))
+        text(R.id.txtHeroCount, "${thisMonth.size} nota tercatat")
         findViewById<BarChartView>(R.id.chart).data = (5 downTo 0).map { back ->
-            val key = Format.shiftMonth(month, -back)
+            val key = Format.shiftMonth(now, -back)
             Format.shortMonth(key) to all.filter { it.month == key }.sumOf { it.total }
         }
+        fillList(R.id.recent, all.take(5))
+        show(R.id.cardRecent, all.isNotEmpty())
+        show(R.id.empty, all.isEmpty())
+        show(R.id.btnSeeAll, all.isNotEmpty())
 
-        val previous = all.filter { it.month == Format.shiftMonth(month, -1) }.sumOf { it.total }
-        val difference = total - previous
-        text(
-            R.id.txtCompare, when {
-                previous == 0L -> "Belum ada data bulan sebelumnya"
-                difference > 0 -> "Naik ${Format.rupiah(difference)} dari bulan lalu"
-                difference < 0 -> "Turun ${Format.rupiah(-difference)} dari bulan lalu"
-                else -> "Sama dengan bulan lalu"
-            }
-        )
+        renderSummary(all.filter { it.month == month })
+    }
+
+    private fun renderSummary(current: List<Nota>) {
+        val total = current.sumOf { it.total }
+        text(R.id.txtMonth, Format.month(month))
+        text(R.id.txtTotal, Format.rupiah(total))
+        text(R.id.txtCount, current.size.toString())
         text(R.id.txtAverage, Format.rupiah(if (current.isEmpty()) 0 else total / current.size))
-        text(R.id.txtBiggest, Format.rupiah(current.maxOfOrNull { it.total } ?: 0))
+        findViewById<View>(R.id.btnExport).isEnabled = current.isNotEmpty()
+        show(R.id.cardRanking, current.isNotEmpty())
+        show(R.id.cardMonth, current.isNotEmpty())
+        show(R.id.monthEmpty, current.isEmpty())
+        fillList(R.id.list, current)
 
         val ranking = findViewById<LinearLayout>(R.id.ranking)
         ranking.removeAllViews()
@@ -139,72 +149,126 @@ class MainActivity : AppCompatActivity() {
                     if (total > 0) (sum * 100 / total).toInt() else 0
                 ranking.addView(row)
             }
-        show(R.id.rankEmpty, current.isEmpty())
     }
 
-    private fun showMenu(anchor: View) {
-        PopupMenu(this, anchor).apply {
-            menu.add(0, 1, 0, "Bagikan data (CSV)")
-            menu.add(0, 2, 1, "Muat data contoh")
-            menu.add(0, 3, 2, "Hapus data contoh")
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    1 -> export()
-                    2 -> loadSample()
-                    else -> {
-                        store.delete { nota -> nota.id.startsWith(SampleData.PREFIX) }
+    private fun fillList(id: Int, notas: List<Nota>) {
+        val list = findViewById<LinearLayout>(id)
+        list.removeAllViews()
+        notas.forEachIndexed { index, nota ->
+            val row = inflate(R.layout.row_nota, list)
+            row.text(R.id.rowInitial, nota.store.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?")
+            row.text(R.id.rowStore, nota.store)
+            row.text(R.id.rowDetail, "${Format.date(nota.date)} • ${nota.items.size} barang")
+            row.text(R.id.rowTotal, Format.rupiah(nota.total))
+            row.findViewById<View>(R.id.rowDivider).visibility =
+                if (index == notas.lastIndex) View.GONE else View.VISIBLE
+            row.setOnClickListener { openEditor(id = nota.id) }
+            list.addView(row)
+        }
+    }
+
+    private fun showScanOptions() {
+        val sheet = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.sheet_scan, null)
+        fun option(id: Int, action: () -> Unit) = view.findViewById<View>(id).setOnClickListener {
+            sheet.dismiss()
+            action()
+        }
+        option(R.id.optScan) { startDocumentScan() }
+        option(R.id.optCamera) { startCamera() }
+        option(R.id.optGallery) { pickImage.launch("image/*") }
+        option(R.id.optManual) { openEditor() }
+        sheet.setContentView(view)
+        sheet.show()
+    }
+
+    /** Pemindai Google: memotong dan meluruskan nota otomatis. Gagal? Pakai kamera biasa. */
+    private fun startDocumentScan() {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        GmsDocumentScanning.getClient(options).getStartScanIntent(this)
+            .addOnSuccessListener(this) {
+                documentScan.launch(IntentSenderRequest.Builder(it).build())
+            }
+            .addOnFailureListener(this) {
+                toast("Pemindai belum tersedia, memakai kamera biasa")
+                startCamera()
+            }
+    }
+
+    private fun startCamera() {
+        try {
+            takePhoto.launch(uriFor(cameraFile))
+        } catch (e: Exception) {
+            toast("Kamera tidak bisa dibuka")
+        }
+    }
+
+    private fun importPhoto(uri: Uri) {
+        try {
+            val file = File(cacheDir, "impor.jpg")
+            contentResolver.openInputStream(uri)!!.use { input ->
+                file.outputStream().use { input.copyTo(it) }
+            }
+            openEditor(photo = file)
+        } catch (e: Exception) {
+            toast("Gambar tidak bisa dibuka")
+        }
+    }
+
+    private fun showProfile() {
+        val account = accounts.current() ?: return logout()
+        val options = arrayOf(
+            "Ekspor semua nota ke Excel", "Muat data contoh", "Hapus data contoh", "Keluar"
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle("${account.name}\n${account.phone}")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> export(store.all(), "rekap-nota-semua")
+                    1 -> {
+                        store.save(*SampleData.create(Format.today()).toTypedArray())
+                        month = Format.today().take(7)
                         render()
                     }
+                    2 -> {
+                        store.delete { it.id.startsWith(SampleData.PREFIX) }
+                        render()
+                    }
+                    else -> logout()
                 }
-                true
             }
-            show()
-        }
+            .show()
     }
 
-    private fun loadSample() {
-        store.save(*SampleData.create(Format.today()).toTypedArray())
-        month = Format.today().take(7)
-        render()
+    private fun logout() {
+        accounts.logout()
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 
-    private fun export() {
-        val notas = store.all()
+    private fun export(notas: List<Nota>, name: String) {
         if (notas.isEmpty()) return toast("Belum ada data")
-
-        val file = File(cacheDir, "nota.csv")
-        file.bufferedWriter().use { out ->
-            out.write("tanggal,toko,barang,jumlah,harga,subtotal,total_nota\n")
-            notas.forEach { nota ->
-                nota.items.ifEmpty { listOf(Item("", 0, 0)) }.forEach { item ->
-                    val cells = listOf(
-                        nota.date, nota.store, item.name, item.qty.toString(),
-                        item.price.toString(), item.subtotal.toString(), nota.total.toString()
-                    )
-                    out.write(cells.joinToString(",") { csv(it) } + "\n")
-                }
-            }
-        }
+        val file = File(cacheDir, "$name.xlsx")
+        file.outputStream().use { Xlsx.write(notas, it) }
         val intent = Intent(Intent.ACTION_SEND)
-            .setType("text/csv")
+            .setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             .putExtra(Intent.EXTRA_STREAM, uriFor(file))
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        startActivity(Intent.createChooser(intent, "Bagikan data nota"))
+        intent.clipData = ClipData.newRawUri(file.name, uriFor(file))
+        startActivity(Intent.createChooser(intent, "Kirim rekap Excel"))
     }
 
-    private fun csv(value: String): String {
-        // Awalan ' mencegah teks dibaca sebagai rumus di Excel
-        val safe = if (value.firstOrNull() in listOf('=', '+', '-', '@')) "'$value" else value
-        return "\"" + safe.replace("\"", "\"\"") + "\""
-    }
-
-    private fun openEditor(id: String? = null, image: Uri? = null) {
-        val intent = Intent(this, EditActivity::class.java)
-            .putExtra(EditActivity.EXTRA_ID, id)
-        if (image != null) {
-            intent.setData(image).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        editor.launch(intent)
+    private fun openEditor(id: String? = null, photo: File? = null) {
+        editor.launch(
+            Intent(this, EditActivity::class.java)
+                .putExtra(EditActivity.EXTRA_ID, id)
+                .putExtra(EditActivity.EXTRA_PHOTO, photo?.path)
+        )
     }
 
     private fun uriFor(file: File): Uri =

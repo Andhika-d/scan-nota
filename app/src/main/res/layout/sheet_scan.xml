@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="20dp" android:paddingBottom="16dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tambah nota" style="@style/Title" android:textSize="20sp" android:paddingHorizontal="20dp" android:paddingBottom="8dp"/>
+<LinearLayout android:id="@+id/optScan" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingHorizontal="20dp" android:paddingVertical="14dp" android:minHeight="64dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+<ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="10dp" android:src="@drawable/ic_scan" android:background="@drawable/bg_circle" app:tint="@color/primary" android:importantForAccessibility="no" />
+<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="14dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Scan nota (disarankan)" style="@style/Heading"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Otomatis dipotong dan diluruskan" style="@style/Soft"/>
+</LinearLayout>
+</LinearLayout>
+<LinearLayout android:id="@+id/optCamera" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingHorizontal="20dp" android:paddingVertical="14dp" android:minHeight="64dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+<ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="10dp" android:src="@drawable/ic_camera" android:background="@drawable/bg_circle" app:tint="@color/primary" android:importantForAccessibility="no" />
+<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="14dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Kamera biasa" style="@style/Heading"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Foto langsung tanpa pemotongan" style="@style/Soft"/>
+</LinearLayout>
+</LinearLayout>
+<LinearLayout android:id="@+id/optGallery" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingHorizontal="20dp" android:paddingVertical="14dp" android:minHeight="64dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+<ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="10dp" android:src="@drawable/ic_image" android:background="@drawable/bg_circle" app:tint="@color/primary" android:importantForAccessibility="no" />
+<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="14dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pilih dari galeri" style="@style/Heading"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Foto atau screenshot yang sudah ada" style="@style/Soft"/>
+</LinearLayout>
+</LinearLayout>
+<LinearLayout android:id="@+id/optManual" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingHorizontal="20dp" android:paddingVertical="14dp" android:minHeight="64dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+<ImageView android:layout_width="44dp" android:layout_height="44dp" android:padding="10dp" android:src="@drawable/ic_edit" android:background="@drawable/bg_circle" app:tint="@color/primary" android:importantForAccessibility="no" />
+<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="14dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Isi manual" style="@style/Heading"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ketik data nota sendiri" style="@style/Soft"/>
+</LinearLayout>
+</LinearLayout>
+</LinearLayout>

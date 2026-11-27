@@ -17,7 +17,7 @@ object ReceiptParser {
         RegexOption.IGNORE_CASE
     )
     private val notItem = Regex(
-        """\b(total|subtotal|jumlah|tunai|cash|kembali|kembalian|ppn|pajak|diskon|disc|hemat|debit|kredit|qris|npwp|telp|telepon|jalan|tanggal|tgl|kasir|bayar|change|struk|invoice|trx)\b|\bjl\.""",
+        """\b(total|subtotal|jumlah|tunai|cash|kembali|kembalian|ppn|pajak|diskon|disc|hemat|debit|kredit|qris|npwp|telp|telepon|jalan|tanggal|tgl|kasir|bayar|change|struk|invoice|trx|service|servis|tax|dpp|biaya|admin|ongkir|ongkos|pembulatan|voucher|member|poin|gopay|ovo|dana|shopeepay|tendered)\b|\bjl\.""",
         RegexOption.IGNORE_CASE
     )
 
@@ -29,11 +29,17 @@ object ReceiptParser {
         Regex("""^(.*?)\s*\b(\d{1,3})\s*(?:pcs\s*)?[xX@×]\s*($MONEY)(?:\s+($MONEY))?$""")
     // "Nama 2 9.000 18.000"
     private val qtyColumns = Regex("""^(.*?)\s+(\d{1,3})\s+($MONEY)\s+($MONEY)$""")
+    // Baris berisi angka saja: "4 4.500 18.000" atau "18.000", namanya di baris sebelumnya
+    private val numbersOnly = Regex("""^(?:(\d{1,3})\s+)?($MONEY)(?:\s+($MONEY))?$""")
+    // Huruf yang sering tertukar dengan angka, hanya di dalam bentuk harga
+    private val looseMoney = Regex("""(?<![A-Za-z])[0-9][0-9OoIl]{0,2}(?:[.,][0-9OoIl]{3})+(?![A-Za-z])""")
+    private val spacedThousand = Regex("""(\d)(?:\s+([.,])|([.,])\s+)(?=[0-9OoIl]{3}(?![0-9A-Za-z]))""")
+
     // "Nama 18.000"
     private val priceOnly = Regex("""^(.*?)\s+($MONEY)$""")
 
     fun parse(lines: List<String>): Receipt {
-        val clean = lines.map { it.replace(rupiah, "").trim() }.filter { it.isNotEmpty() }
+        val clean = lines.map { tidy(it) }.filter { it.isNotEmpty() }
 
         val store = clean.firstOrNull { hasName(it) } ?: ""
         val date = clean.firstNotNullOfOrNull { findDate(it) } ?: ""
@@ -56,6 +62,15 @@ object ReceiptParser {
         return Receipt(store, date, if (confirmed) sum else total ?: sum, items)
     }
 
+    /** Rapikan salah baca yang umum: "Rp", "75. 000", dan "18.5OO". */
+    private fun tidy(line: String): String =
+        line.replace(rupiah, "")
+            .replace(spacedThousand) { it.groupValues[1] + it.groupValues[2] + it.groupValues[3] }
+            .replace(looseMoney) { m ->
+                m.value.replace('O', '0').replace('o', '0').replace('I', '1').replace('l', '1')
+            }
+            .trim()
+
     private fun lastAmount(line: String): Long? =
         Regex(MONEY).findAll(line).lastOrNull()?.let { amount(it.value) }
 
@@ -75,6 +90,18 @@ object ReceiptParser {
     }
 
     private fun parseLine(line: String, pendingName: String): Item? {
+        numbersOnly.find(line)?.let { m ->
+            if (pendingName.isEmpty()) return null
+            val qty = m.groupValues[1].toIntOrNull() ?: 1
+            val first = amount(m.groupValues[2])
+            val last = m.groupValues[3].takeIf { it.isNotEmpty() }?.let { amount(it) }
+            val unit = when {
+                last == null -> if (qty > 1 && first % qty == 0L) first / qty else first
+                qty * first == last -> first
+                else -> return Item(cleanName(pendingName), 1, last)
+            }
+            return if (qty > 0) Item(cleanName(pendingName), qty, unit) else null
+        }
         qtyTimes.find(line)?.let { m ->
             val name = cleanName(m.groupValues[1]).takeIf { hasName(it) } ?: pendingName
             val qty = m.groupValues[2].toInt()

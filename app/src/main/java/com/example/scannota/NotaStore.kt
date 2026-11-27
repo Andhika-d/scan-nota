@@ -6,11 +6,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Penyimpanan lokal dalam satu file JSON. Cukup untuk demo. */
-class NotaStore(context: Context) {
-    private val file = AtomicFile(File(context.filesDir, "nota.json"))
+/** Penyimpanan lokal: satu file JSON per akun, foto nota di folder "foto". */
+class NotaStore(private val context: Context) {
+    private val file: AtomicFile
+        get() {
+            val owner = Accounts(context).current()?.phone ?: "tamu"
+            return AtomicFile(File(context.filesDir, "nota-$owner.json"))
+        }
+
+    fun photo(id: String) = File(context.filesDir, "foto/$id.jpg")
 
     fun all(): List<Nota> {
+        val file = file
         if (!file.baseFile.exists()) return emptyList()
         val array = JSONArray(String(file.readFully()))
         return (0 until array.length())
@@ -25,9 +32,20 @@ class NotaStore(context: Context) {
         write(all().filterNot { it.id in ids } + notas)
     }
 
-    fun delete(predicate: (Nota) -> Boolean) = write(all().filterNot(predicate))
+    fun delete(predicate: (Nota) -> Boolean) {
+        val (removed, kept) = all().partition(predicate)
+        write(kept)
+        removed.forEach { photo(it.id).delete() }
+    }
+
+    /** Nota lain dengan toko, tanggal, dan total yang sama. */
+    fun findDuplicate(nota: Nota) = all().firstOrNull {
+        it.id != nota.id && it.date == nota.date && it.total == nota.total &&
+            it.store.equals(nota.store, ignoreCase = true)
+    }
 
     private fun write(notas: List<Nota>) {
+        val file = file
         val bytes = JSONArray(notas.map { toJson(it) }).toString().toByteArray()
         val stream = file.startWrite()
         try {

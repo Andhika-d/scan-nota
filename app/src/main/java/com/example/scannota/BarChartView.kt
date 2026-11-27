@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 
 class BarChartView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
     /** Pasangan label dan nilai. Batang terakhir (bulan terpilih) diberi warna utama. */
@@ -21,7 +22,8 @@ class BarChartView(context: Context, attrs: AttributeSet?) : View(context, attrs
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = 11 * density
-        color = ContextCompat.getColor(context, R.color.text_soft)
+        color = ContextCompat.getColor(context, R.color.on_hero_soft)
+        typeface = ResourcesCompat.getFont(context, R.font.inter_regular)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -34,9 +36,9 @@ class BarChartView(context: Context, attrs: AttributeSet?) : View(context, attrs
             val x = slot * i + slot / 2
             val top = bottom - maxOf(3 * density, space * value / max)
             bar.color = ContextCompat.getColor(
-                context, if (i == data.lastIndex) R.color.primary else R.color.bar_soft
+                context, if (i == data.lastIndex) R.color.bar_now else R.color.bar_past
             )
-            canvas.drawRoundRect(x - slot * 0.28f, top, x + slot * 0.28f, bottom, 6 * density, 6 * density, bar)
+            canvas.drawRoundRect(x - slot * 0.28f, top, x + slot * 0.28f, bottom, 4 * density, 4 * density, bar)
             if (value > 0) canvas.drawText(compact(value), x, top - 5 * density, label)
             canvas.drawText(name, x, height - 4 * density, label)
         }

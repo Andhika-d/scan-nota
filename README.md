@@ -14,16 +14,17 @@ Foto nota -> teks dibaca di HP (ML Kit) -> form terisi -> koreksi -> simpan -> r
 File APK: menu Build > Build APK(s). Hasilnya di `app/build/outputs/apk/debug/`.
 
 ## Fitur
-- Scan nota dari kamera atau galeri, atau isi manual
-- Barang per baris (nama, jumlah, harga satuan)
-- Riwayat per bulan: buka, edit, hapus
-- Rekap: grafik 6 bulan, rata-rata, nota terbesar, belanja per toko
-- Ekspor CSV, dan data contoh untuk demo (menu titik tiga)
+- Login demo: nomor HP + PIN, tersimpan di HP (tanpa server). Data dipisah per akun.
+- Scan nota dengan pemindai dokumen (potong dan luruskan otomatis), kamera, galeri, atau isi manual
+- Foto nota tersimpan, barang per baris, peringatan bila total beda atau nota ganda
+- Beranda, rekap bulanan, belanja per toko, ekspor Excel (.xlsx)
 
 ## Catatan
-- Hasil scan adalah tebakan, selalu cek sebelum simpan. Foto yang terang dan lurus lebih akurat.
-- Aturan pembacaan ada di `ReceiptParser.kt`.
-- Data tersimpan di dalam aplikasi dan hilang kalau aplikasi di-uninstall.
+- Hasil scan adalah tebakan, selalu cek sebelum simpan.
+- Aturan pembacaan ada di `ReceiptParser.kt` dan `RowGrouper.kt`.
+- Pemindai dokumen butuh Google Play Services dan internet saat pertama dipakai.
+- Belum ada fitur lupa PIN. Data hilang kalau aplikasi di-uninstall.
+- Font Inter (SIL Open Font License 1.1), https://github.com/rsms/inter
 
 ## Build lewat HP (GitHub Actions)
 Setiap perubahan di branch `main` otomatis di-build. Buka tab **Actions**, pilih hasil build yang

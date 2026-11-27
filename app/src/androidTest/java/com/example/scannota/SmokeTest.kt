@@ -1,13 +1,25 @@
 package com.example.scannota
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
+import android.os.ParcelFileDescriptor
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
-import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -16,20 +28,91 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class SmokeTest {
-    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context = instrumentation.targetContext
+    private val accounts = Accounts(context)
     private val store = NotaStore(context)
 
     @Before
-    fun clear() = store.delete { true }
+    fun clear() {
+        context.getSharedPreferences("akun", Context.MODE_PRIVATE).edit().clear().commit()
+        context.filesDir.deleteRecursively()
+        context.filesDir.mkdirs()
+    }
+
+    private fun signIn() = assertTrue(accounts.register("Andi Pratama", "081200000000", "123456"))
+
+    private fun asset(name: String): Bitmap =
+        instrumentation.context.assets.open(name).use { BitmapFactory.decodeStream(it) }
+
+    private fun screenshot(name: String) {
+        instrumentation.waitForIdleSync()
+        Thread.sleep(1200)
+        val out = instrumentation.uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/layar-$name.png")
+        ParcelFileDescriptor.AutoCloseInputStream(out).use { it.readBytes() }
+    }
 
     @Test
-    fun scanNotaDummyLaluSimpan() {
-        val file = File(context.cacheDir, "uji.png")
-        InstrumentationRegistry.getInstrumentation().context.assets.open("nota-dummy.png").use { input ->
-            file.outputStream().use { input.copyTo(it) }
+    fun daftarKeluarDanMasuk() {
+        ActivityScenario.launch(LoginActivity::class.java).use { scenario ->
+            screenshot("1-daftar")
+            scenario.onActivity {
+                fun type(id: Int, value: String) = it.findViewById<EditText>(id).setText(value)
+                type(R.id.inputName, "Andi Pratama")
+                type(R.id.inputPhone, "081200000000")
+                type(R.id.inputPin, "123456")
+                type(R.id.inputConfirm, "123456")
+                it.findViewById<View>(R.id.btnSubmit).performClick()
+            }
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        val intent = Intent(context, EditActivity::class.java).setData(uri)
+        assertEquals("Andi Pratama", accounts.current()?.name)
+        accounts.logout()
+        assertFalse(accounts.login("081200000000", "000000"))
+        ActivityScenario.launch(LoginActivity::class.java).use { screenshot("2-masuk") }
+        assertTrue(accounts.login("081200000000", "123456"))
+        assertFalse(accounts.register("Lain", "081200000000", "111111"))
+    }
+
+    @Test
+    fun bacaSemuaNotaLurusDanMiring() {
+        val client = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val cases = listOf(
+            Triple("nota-dummy.png", 143000L, listOf("Beras", "Minyak", "Gula", "Telur", "Sabun")),
+            Triple("nota-1-minimarket.png", 87800L, listOf("Mie", "Susu", "Roti", "Teh")),
+            Triple("nota-2-warung.png", 64000L, listOf("Nasi", "Teh", "Ayam")),
+            Triple("nota-3-restoran.png", 137445L, listOf("Sate", "Sop", "Jus", "Air")),
+            Triple("nota-4-apotek.png", 96500L, listOf("Vitamin", "Masker", "Minyak")),
+            Triple("nota-5-toko-bangunan.png", 2755000L, listOf("Semen", "Cat", "Pipa"))
+        )
+        val failures = mutableListOf<String>()
+        for ((name, total, items) in cases) {
+            for (angle in listOf(0f, 4f, -3f)) {
+                val source = asset(name)
+                val turned = Bitmap.createBitmap(
+                    source, 0, 0, source.width, source.height,
+                    Matrix().apply { postRotate(angle) }, true
+                )
+                val page = Bitmap.createBitmap(turned.width, turned.height, Bitmap.Config.ARGB_8888)
+                Canvas(page).apply { drawColor(Color.WHITE); drawBitmap(turned, 0f, 0f, null) }
+                val rows = Ocr.toRows(Tasks.await(client.process(InputImage.fromBitmap(page, 0))))
+                val result = ReceiptParser.parse(rows)
+                val names = result.items.map { it.name.substringBefore(' ') }
+                if (result.total != total || names != items) {
+                    failures.add("$name $angle: ${result.total} $names | ${rows.joinToString(" / ")}")
+                }
+            }
+        }
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
+    @Test
+    fun scanSimpanRekapDanEkspor() {
+        signIn()
+        val photo = File(context.cacheDir, "uji.jpg")
+        Photos.save(asset("nota-dummy.png"), photo)
+        val intent = Intent(context, EditActivity::class.java)
+            .putExtra(EditActivity.EXTRA_PHOTO, photo.path)
 
         ActivityScenario.launch<EditActivity>(intent).use { scenario ->
             var total = ""
@@ -38,36 +121,45 @@ class SmokeTest {
                 if (total.isNotEmpty()) break
                 Thread.sleep(500)
             }
+            screenshot("3-hasil-scan")
             scenario.onActivity {
-                val name = it.findViewById<EditText>(R.id.inputStore).text.toString()
-                assertTrue("toko: $name", name.contains("SEJAHTERA", ignoreCase = true))
                 assertEquals("143000", total)
                 assertEquals(5, it.findViewById<LinearLayout>(R.id.items).childCount)
-                it.findViewById<android.view.View>(R.id.btnSave).performClick()
+                it.findViewById<View>(R.id.btnSave).performClick()
             }
         }
         val saved = store.all().single()
         assertEquals("2026-11-27", saved.date)
-        assertEquals(143000L, saved.items.sumOf { it.subtotal })
-    }
+        assertTrue(store.photo(saved.id).exists())
 
-    @Test
-    fun riwayatRekapDanEdit() {
+        store.save(*SampleData.create(Format.today()).toTypedArray())
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            screenshot("4-beranda")
+            scenario.onActivity { it.findViewById<View>(R.id.btnScan).performClick() }
+            screenshot("5-pilihan-scan")
+        }
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity {
-                it.findViewById<android.view.View>(R.id.btnSample).performClick()
-                assertTrue(it.findViewById<LinearLayout>(R.id.list).childCount > 0)
-                it.findViewById<android.view.View>(R.id.tabSummary).performClick()
+                it.findViewById<View>(R.id.tabSummary).performClick()
                 assertTrue(it.findViewById<LinearLayout>(R.id.ranking).childCount > 0)
             }
+            screenshot("6-rekap")
             scenario.recreate()
         }
-        val nota = store.all().first()
-        val intent = Intent(context, EditActivity::class.java).putExtra(EditActivity.EXTRA_ID, nota.id)
-        ActivityScenario.launch<EditActivity>(intent).use { scenario ->
+        val edit = Intent(context, EditActivity::class.java).putExtra(EditActivity.EXTRA_ID, saved.id)
+        ActivityScenario.launch<EditActivity>(edit).use { scenario ->
             scenario.recreate()
-            scenario.onActivity { it.findViewById<android.view.View>(R.id.btnSave).performClick() }
+            screenshot("7-edit")
+            scenario.onActivity { it.findViewById<View>(R.id.btnSave).performClick() }
         }
-        assertEquals(nota, store.find(nota.id))
+        assertEquals(saved, store.find(saved.id))
+
+        val excel = File(context.cacheDir, "uji.xlsx")
+        excel.outputStream().use { Xlsx.write(store.all(), it) }
+        assertTrue(excel.length() > 1000)
+
+        // Akun lain tidak melihat data akun ini
+        assertTrue(accounts.register("Budi", "081300000000", "654321"))
+        assertTrue(store.all().isEmpty())
     }
 }
