@@ -33,6 +33,9 @@ object ReceiptParser {
     private val numbersOnly = Regex("""^(?:(\d{1,3})\s+)?($MONEY)(?:\s+($MONEY))?$""")
     // Huruf yang sering tertukar dengan angka, hanya di dalam bentuk harga
     private val looseMoney = Regex("""(?<![A-Za-z])[0-9][0-9OoIl]{0,2}(?:[.,][0-9OoIl]{3})+(?![A-Za-z])""")
+    private val looseDate = Regex(
+        """(?<![A-Za-z0-9])[0-9Oo][0-9OoIl]?([-/.])[0-9OoIl]{1,2}\1[0-9OoIl]{2,4}(?![A-Za-z0-9])"""
+    )
     private val spacedThousand = Regex("""(\d)(?:\s+([.,])|([.,])\s+)(?=[0-9OoIl]{3}(?![0-9A-Za-z]))""")
 
     // "Nama 18.000"
@@ -66,10 +69,12 @@ object ReceiptParser {
     private fun tidy(line: String): String =
         line.replace(rupiah, "")
             .replace(spacedThousand) { it.groupValues[1] + it.groupValues[2] + it.groupValues[3] }
-            .replace(looseMoney) { m ->
-                m.value.replace('O', '0').replace('o', '0').replace('I', '1').replace('l', '1')
-            }
+            .replace(looseDate) { digits(it.value) }
+            .replace(looseMoney) { digits(it.value) }
             .trim()
+
+    private fun digits(text: String) =
+        text.replace('O', '0').replace('o', '0').replace('I', '1').replace('l', '1')
 
     private fun lastAmount(line: String): Long? =
         Regex(MONEY).findAll(line).lastOrNull()?.let { amount(it.value) }

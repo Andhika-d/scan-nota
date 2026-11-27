@@ -80,26 +80,39 @@ class SmokeTest {
         val cases = listOf(
             Triple("nota-dummy.png", 143000L, listOf("Beras", "Minyak", "Gula", "Telur", "Sabun")),
             Triple("nota-1-minimarket.png", 87800L, listOf("Mie", "Susu", "Roti", "Teh")),
-            Triple("nota-2-warung.png", 64000L, listOf("Nasi", "Teh", "Ayam")),
+            Triple("nota-2-warung.png", 64000L, listOf("Nasi", "Es", "Ayam")),
             Triple("nota-3-restoran.png", 137445L, listOf("Sate", "Sop", "Jus", "Air")),
             Triple("nota-4-apotek.png", 96500L, listOf("Vitamin", "Masker", "Minyak")),
             Triple("nota-5-toko-bangunan.png", 2755000L, listOf("Semen", "Cat", "Pipa"))
         )
+        // Jumlah subtotal barang yang seharusnya (restoran dan apotek: sebelum pajak/diskon)
+        val sums = listOf(143000L, 87800L, 64000L, 119000L, 101500L, 2755000L)
         val failures = mutableListOf<String>()
-        for ((name, total, items) in cases) {
-            for (angle in listOf(0f, 4f, -3f)) {
-                val source = asset(name)
+        cases.forEachIndexed { index, (name, total, items) ->
+            val source = asset(name)
+            val variants = listOf(0f, 4f, -3f).map { angle ->
                 val turned = Bitmap.createBitmap(
                     source, 0, 0, source.width, source.height,
                     Matrix().apply { postRotate(angle) }, true
                 )
                 val page = Bitmap.createBitmap(turned.width, turned.height, Bitmap.Config.ARGB_8888)
                 Canvas(page).apply { drawColor(Color.WHITE); drawBitmap(turned, 0f, 0f, null) }
+                "$angle" to page
+            }
+            // Sama seperti jalur aplikasi: disimpan sebagai JPEG lalu dibuka lagi
+            val jpeg = File(context.cacheDir, "uji.jpg")
+            Photos.save(source, jpeg)
+            for ((label, page) in variants + ("jpeg" to Photos.load(jpeg)!!)) {
                 val rows = Ocr.toRows(Tasks.await(client.process(InputImage.fromBitmap(page, 0))))
                 val result = ReceiptParser.parse(rows)
-                val names = result.items.map { it.name.substringBefore(' ') }
-                if (result.total != total || names != items) {
-                    failures.add("$name $angle: ${result.total} $names | ${rows.joinToString(" / ")}")
+                val names = result.items.map { it.name.replace(" ", "") }
+                val namesOk = names.size == items.size &&
+                    names.zip(items).all { (found, expected) -> found.startsWith(expected) }
+                val sum = result.items.sumOf { it.subtotal }
+                if (result.total != total || !namesOk || sum != sums[index] || result.date.isEmpty()) {
+                    failures.add(
+                        "$name $label: ${result.date} ${result.total}/$sum $names | ${rows.joinToString(" / ")}"
+                    )
                 }
             }
         }
