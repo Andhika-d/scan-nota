@@ -1,6 +1,6 @@
 # Scan Nota
 
-Foto nota -> teks dibaca di HP (ML Kit) -> form terisi -> koreksi -> simpan -> bagikan CSV.
+Foto nota -> teks dibaca di HP (ML Kit) -> form terisi -> koreksi -> simpan -> riwayat dan rekap.
 
 ## Cara menjalankan
 1. Install Android Studio di laptop.
@@ -13,11 +13,17 @@ Foto nota -> teks dibaca di HP (ML Kit) -> form terisi -> koreksi -> simpan -> b
 
 File APK: menu Build > Build APK(s). Hasilnya di `app/build/outputs/apk/debug/`.
 
+## Fitur
+- Scan nota dari kamera atau galeri, atau isi manual
+- Barang per baris (nama, jumlah, harga satuan)
+- Riwayat per bulan: buka, edit, hapus
+- Rekap: grafik 6 bulan, rata-rata, nota terbesar, belanja per toko
+- Ekspor CSV, dan data contoh untuk demo (menu titik tiga)
+
 ## Catatan
 - Hasil scan adalah tebakan, selalu cek sebelum simpan. Foto yang terang dan lurus lebih akurat.
 - Aturan pembacaan ada di `ReceiptParser.kt`.
-- Data tersimpan di dalam aplikasi dan hilang kalau aplikasi di-uninstall. Ekspor CSV untuk cadangan.
-- CSV dipisah koma. Kalau Excel menumpuk semua di satu kolom, pakai Data > From Text/CSV.
+- Data tersimpan di dalam aplikasi dan hilang kalau aplikasi di-uninstall.
 
 ## Build lewat HP (GitHub Actions)
 Setiap perubahan di branch `main` otomatis di-build. Buka tab **Actions**, pilih hasil build yang
