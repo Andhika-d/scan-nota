@@ -1,11 +1,11 @@
 name: Tes di emulator
 on:
   push:
-    branches: [main, v3]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -31,17 +31,6 @@ jobs:
           arch: x86_64
           profile: pixel_5
           script: bash .github/tes.sh
-      - name: Simpan screenshot ke branch layar
-        if: always() && github.ref == 'refs/heads/v3'
-        env:
-          TOKEN: ${{ github.token }}
-        run: |
-          ls layar/*.png || exit 0
-          cd layar
-          git init -q
-          git add .
-          git -c user.name=ci -c user.email=ci@localhost commit -qm "Screenshot tes"
-          git push -qf "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" HEAD:refs/heads/layar
       - name: Tampilkan penyebab gagal
         if: failure()
         run: |
