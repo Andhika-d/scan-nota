@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <Button
+            android:id="@+id/btnCamera"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Foto Nota" />
+
+        <Button
+            android:id="@+id/btnGallery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pilih dari Galeri" />
+
+        <ImageView
+            android:id="@+id/preview"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:contentDescription="Foto nota"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Nama toko" />
+
+        <EditText
+            android:id="@+id/inputStore"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:inputType="textCapWords" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Tanggal" />
+
+        <EditText
+            android:id="@+id/inputDate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Total (Rp)" />
+
+        <EditText
+            android:id="@+id/inputTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:inputType="number" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Daftar belanja" />
+
+        <EditText
+            android:id="@+id/inputItems"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:inputType="textMultiLine" android:gravity="top" android:minLines="5" />
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Simpan" />
+
+        <Button
+            android:id="@+id/btnExport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bagikan Data (CSV)" />
+    </LinearLayout>
+</ScrollView>
