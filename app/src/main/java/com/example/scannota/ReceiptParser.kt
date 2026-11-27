@@ -21,6 +21,9 @@ object ReceiptParser {
         RegexOption.IGNORE_CASE
     )
 
+    private val paidWord = Regex("""\b(tunai|cash|bayar)\b""", RegexOption.IGNORE_CASE)
+    private val changeWord = Regex("""\b(kembali|kembalian|change)\b""", RegexOption.IGNORE_CASE)
+
     // "Nama 2 x 9.000 18.000" atau "2 x 9.000 18.000" (nama di baris sebelumnya)
     private val qtyTimes =
         Regex("""^(.*?)\s*\b(\d{1,3})\s*(?:pcs\s*)?[xX@×]\s*($MONEY)(?:\s+($MONEY))?$""")
@@ -39,13 +42,22 @@ object ReceiptParser {
         val total = clean
             .filter { totalWord.containsMatchIn(it) && !notTotal.containsMatchIn(it) }
             .sortedByDescending { it.contains("grand", ignoreCase = true) }
-            .firstNotNullOfOrNull { line ->
-                Regex(MONEY).findAll(line).lastOrNull()?.let { amount(it.value) }
-            }
+            .firstNotNullOfOrNull { lastAmount(it) }
 
         val items = parseItems(clean, store)
-        return Receipt(store, date, total ?: items.sumOf { it.subtotal }, items)
+        val sum = items.sumOf { it.subtotal }
+
+        // OCR kadang salah baca satu angka. Kalau jumlah barang cocok dengan
+        // (tunai - kembali), angka itu lebih bisa dipercaya daripada baris total.
+        val paid = clean.firstOrNull { paidWord.containsMatchIn(it) }?.let { lastAmount(it) }
+        val change = clean.firstOrNull { changeWord.containsMatchIn(it) }?.let { lastAmount(it) }
+        val confirmed = paid != null && change != null && sum > 0 && paid - change == sum
+
+        return Receipt(store, date, if (confirmed) sum else total ?: sum, items)
     }
+
+    private fun lastAmount(line: String): Long? =
+        Regex(MONEY).findAll(line).lastOrNull()?.let { amount(it.value) }
 
     private fun parseItems(lines: List<String>, store: String): List<Item> {
         val items = mutableListOf<Item>()
