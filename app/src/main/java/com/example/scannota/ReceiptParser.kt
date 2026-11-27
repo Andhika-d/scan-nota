@@ -8,7 +8,8 @@ object ReceiptParser {
     // 12.500 / 12,500 / 12500, boleh diakhiri ,00
     private const val MONEY = """(?:\d{1,3}(?:[.,]\d{3})+|\d{3,})(?:[.,]\d{2})?"""
 
-    private val dmy = Regex("""\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})\b""")
+    // Boleh ada satu spasi di sekitar pemisah: OCR kadang membaca "27/11/ 2026"
+    private val dmy = Regex("""\b(\d{1,2}) ?([-/.]) ?(\d{1,2}) ?\2 ?(\d{4}|\d{2})\b""")
     private val ymd = Regex("""\b(\d{4})-(\d{2})-(\d{2})\b""")
     private val rupiah = Regex("""\brp\.?\s*""", RegexOption.IGNORE_CASE)
     private val totalWord = Regex("""\b(grand\s*total|total|jumlah)\b""", RegexOption.IGNORE_CASE)
@@ -36,6 +37,8 @@ object ReceiptParser {
     private val looseDate = Regex(
         """(?<![A-Za-z0-9])[0-9Oo][0-9OoIl]?([-/.])[0-9OoIl]{1,2}\1[0-9OoIl]{2,4}(?![A-Za-z0-9])"""
     )
+    // Harga yang terpotong, misalnya "17.50" (angka terakhir tidak terbaca)
+    private val brokenPrice = Regex("""^(.*?)\s+(\d{1,3}[.,]\d{1,2})$""")
     private val spacedThousand = Regex("""(\d)(?:\s+([.,])|([.,])\s+)(?=[0-9OoIl]{3}(?![0-9A-Za-z]))""")
 
     // "Nama 18.000"
@@ -53,7 +56,7 @@ object ReceiptParser {
             .sortedByDescending { it.contains("grand", ignoreCase = true) }
             .firstNotNullOfOrNull { lastAmount(it) }
 
-        val items = parseItems(clean, store)
+        val items = repair(parseItems(clean, store), total)
         val sum = items.sumOf { it.subtotal }
 
         // OCR kadang salah baca satu angka. Kalau jumlah barang cocok dengan
@@ -79,8 +82,9 @@ object ReceiptParser {
     private fun lastAmount(line: String): Long? =
         Regex(MONEY).findAll(line).lastOrNull()?.let { amount(it.value) }
 
-    private fun parseItems(lines: List<String>, store: String): List<Item> {
-        val items = mutableListOf<Item>()
+    private fun parseItems(lines: List<String>, store: String): List<Pair<Item, String>> {
+        // Pasangan barang dan angka harga yang terpotong (kosong kalau harganya utuh)
+        val items = mutableListOf<Pair<Item, String>>()
         var pendingName = ""
         for (line in lines) {
             if (line == store || notItem.containsMatchIn(line) || findDate(line) != null) {
@@ -88,10 +92,33 @@ object ReceiptParser {
                 continue
             }
             val item = parseLine(line, pendingName)
-            if (item != null) items.add(item)
-            pendingName = if (item == null && hasName(line)) line else ""
+            val broken = if (item == null) brokenPrice.find(line) else null
+            val brokenName = broken?.let { cleanName(it.groupValues[1]) }.orEmpty()
+            if (item != null) {
+                items.add(item to "")
+            } else if (hasName(brokenName)) {
+                items.add(Item(brokenName, 1, 0) to broken!!.groupValues[2].filter { it.isDigit() })
+            }
+            pendingName = if (item == null && broken == null && hasName(line)) line else ""
         }
         return items
+    }
+
+    /**
+     * Harga yang terpotong hanya dilengkapi kalau terbukti: cuma satu yang kosong,
+     * dan selisih dengan total diawali angka yang memang terbaca. Selain itu
+     * harganya dibiarkan kosong supaya diisi pengguna.
+     */
+    private fun repair(found: List<Pair<Item, String>>, total: Long?): List<Item> {
+        val items = found.map { it.first }
+        // Tanpa satu pun harga utuh, potongan angka itu kemungkinan bukan barang
+        if (items.none { it.price > 0 }) return emptyList()
+        val broken = found.indices.filter { found[it].second.isNotEmpty() }
+        if (total == null || broken.size != 1) return items
+        val index = broken.single()
+        val missing = total - items.sumOf { it.subtotal }
+        if (missing <= 0 || !missing.toString().startsWith(found[index].second)) return items
+        return items.mapIndexed { i, item -> if (i == index) item.copy(price = missing) else item }
     }
 
     private fun parseLine(line: String, pendingName: String): Item? {
@@ -137,7 +164,7 @@ object ReceiptParser {
             val (y, mo, d) = m.destructured
             return isoDate(y.toInt(), mo.toInt(), d.toInt())
         }
-        val (d, mo, y) = dmy.find(line)?.destructured ?: return null
+        val (d, _, mo, y) = dmy.find(line)?.destructured ?: return null
         return isoDate(if (y.length == 2) 2000 + y.toInt() else y.toInt(), mo.toInt(), d.toInt())
     }
 
