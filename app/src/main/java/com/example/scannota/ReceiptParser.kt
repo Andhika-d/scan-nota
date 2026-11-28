@@ -18,7 +18,7 @@ object ReceiptParser {
         RegexOption.IGNORE_CASE
     )
     private val notItem = Regex(
-        """\b(total|subtotal|jumlah|tunai|cash|kembali|kembalian|ppn|pajak|diskon|disc|hemat|debit|kredit|qris|npwp|telp|telepon|jalan|tanggal|tgl|kasir|bayar|change|struk|invoice|trx|service|servis|tax|dpp|biaya|admin|ongkir|ongkos|pembulatan|voucher|member|poin|gopay|ovo|dana|shopeepay|tendered)\b|\bjl\.""",
+        """\b(total|subtotal|jumlah|tunai|cash|kembali|kembalian|ppn|pajak|diskon|disc|hemat|debit|kredit|qris|npwp|telp|telepon|jalan|tanggal|tgl|kasir|bayar|change|struk|invoice|trx|service|servis|tax|dpp|biaya|admin|ongkir|ongkos|pembulatan|voucher|member|poin|gopay|ovo|dana|shopeepay|tendered|pembayaran|pengiriman|penanganan|layanan|asuransi|proteksi|koin|potongan|pesanan|penjual|pembeli|alamat)\b|\bjl\.""",
         RegexOption.IGNORE_CASE
     )
 
@@ -41,11 +41,30 @@ object ReceiptParser {
     private val brokenPrice = Regex("""^(.*?)\s+(\d{1,3}[.,]\d{1,2})$""")
     private val spacedThousand = Regex("""(\d)(?:\s+([.,])|([.,])\s+)(?=[0-9OoIl]{3}(?![0-9A-Za-z]))""")
 
+    // "27 November 2026", "27 Nov 26"
+    private val monthNames =
+        listOf("jan", "feb", "mar", "apr", "me?[iy]", "jun", "jul", "a(gu|gt|ug)", "sep", "o[ck]t", "nov", "de[sc]")
+    private val textDate = Regex(
+        """\b(\d{1,2})[ -](jan(?:uari|uary)?|feb(?:ruari|ruary)?|mar(?:et|ch)?|apr(?:il)?|mei|may|jun[ie]?|jul[iy]?|agu(?:stus)?|agt|aug(?:ust)?|sep(?:t|tember)?|o[ck]t(?:ober)?|nov(?:ember)?|de[sc](?:ember)?)[ -](\d{4}|\d{2})\b""",
+        RegexOption.IGNORE_CASE
+    )
+    // Judul umum yang bukan nama toko
+    private val notStore = Regex(
+        """^(nota(\s+(pembelian|penjualan|pesanan|no\b.*))?|invoice|faktur(\s+penjualan)?|struk(\s+belanja)?|kwitansi|no\.\s*(nota|pesanan|invoice).*|nama\s*(barang|produk).*|rincian.*|tanggal.*|tgl.*|banyak.*|tanda\s*terima.*)\W*$""",
+        RegexOption.IGNORE_CASE
+    )
+    private val seller = Regex("""\bnama\s*penjual\s*:?\s*(.+)""", RegexOption.IGNORE_CASE)
+    // "Nama 12.000 2 24.000" (harga dulu, baru jumlah)
+    private val priceQtyTotal = Regex("""^(.*?)\s+($MONEY)\s+[xX]?(\d{1,3})\s+($MONEY)$""")
+
     // "18x Nama 35.000 630.000" (jumlah di depan, umum di nota toko)
     private val qtyFirst =
         Regex("""^(\d{1,3})\s*[xX×]\s+(.*?)\s+($MONEY)\s+($MONEY)$""")
     // Judul tabel barang. Kalau ada, barang hanya dicari di bawahnya sampai baris total
-    private val tableHeader = Regex("""\bnama\s*barang\b""", RegexOption.IGNORE_CASE)
+    private val tableHeader = Regex(
+        """\bnama\s*(barang|produk|item)\b|\bproduk\b.*\b(harga|kuantitas|qty|subtotal)\b""",
+        RegexOption.IGNORE_CASE
+    )
     private val tableEnd = Regex("""^(sub\s*total|grand\s*total|total|jumlah)\b""", RegexOption.IGNORE_CASE)
     private val rowNumber = Regex("""^\d{1,3}[.)]?\s+(?=.*[A-Za-z]{2})""")
 
@@ -55,13 +74,27 @@ object ReceiptParser {
     fun parse(lines: List<String>): Receipt {
         val clean = lines.map { tidy(it) }.filter { it.isNotEmpty() }
 
-        val store = clean.firstOrNull { hasName(it) } ?: ""
+        val store = clean.firstNotNullOfOrNull { seller.find(it)?.groupValues?.get(1)?.trim() }
+            ?: clean
+                // Nama toko ada di atas tabel, dan bukan baris yang berakhir dengan harga
+                .takeWhile { !tableHeader.containsMatchIn(it) }
+                .firstOrNull {
+                    hasName(it) && !notStore.matches(it) && findDate(it) == null &&
+                        !priceOnly.matches(it)
+                }
+            ?: ""
         val date = clean.firstNotNullOfOrNull { findDate(it) } ?: ""
 
         // "Grand total" didahulukan, selain itu baris total pertama yang ada angkanya
         val total = clean
             .filter { totalWord.containsMatchIn(it) && !notTotal.containsMatchIn(it) }
-            .sortedByDescending { it.contains("grand", ignoreCase = true) }
+            .sortedByDescending {
+                when {
+                    it.contains("pembayaran", ignoreCase = true) -> 2
+                    it.contains("grand", ignoreCase = true) -> 1
+                    else -> 0
+                }
+            }
             .firstNotNullOfOrNull { lastAmount(it) }
 
         val items = repair(parseItems(clean, store), total)
@@ -157,6 +190,14 @@ object ReceiptParser {
             val qty = m.groupValues[2].toInt()
             return if (hasName(name) && qty > 0) Item(name, qty, amount(m.groupValues[3])) else null
         }
+        priceQtyTotal.find(line)?.let { m ->
+            val name = cleanName(m.groupValues[1])
+            val unit = amount(m.groupValues[2])
+            val qty = m.groupValues[3].toInt()
+            if (hasName(name) && qty > 0 && qty * unit == amount(m.groupValues[4])) {
+                return Item(name, qty, unit)
+            }
+        }
         qtyColumns.find(line)?.let { m ->
             val name = cleanName(m.groupValues[1])
             val qty = m.groupValues[2].toInt()
@@ -190,9 +231,16 @@ object ReceiptParser {
             val (y, mo, d) = m.destructured
             return isoDate(y.toInt(), mo.toInt(), d.toInt())
         }
+        textDate.find(line)?.let { m ->
+            val (d, name, y) = m.destructured
+            val month = monthNames.indexOfFirst { Regex("^$it", RegexOption.IGNORE_CASE).containsMatchIn(name) }
+            return isoDate(year(y), month + 1, d.toInt())
+        }
         val (d, _, mo, y) = dmy.find(line)?.destructured ?: return null
-        return isoDate(if (y.length == 2) 2000 + y.toInt() else y.toInt(), mo.toInt(), d.toInt())
+        return isoDate(year(y), mo.toInt(), d.toInt())
     }
+
+    private fun year(text: String) = if (text.length == 2) 2000 + text.toInt() else text.toInt()
 
     private fun isoDate(year: Int, month: Int, day: Int): String? {
         if (month !in 1..12) return null

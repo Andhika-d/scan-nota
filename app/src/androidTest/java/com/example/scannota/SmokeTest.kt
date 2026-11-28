@@ -7,6 +7,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.RectF
+import android.graphics.Paint
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.ColorMatrix
 import android.os.ParcelFileDescriptor
 import android.view.View
 import android.widget.EditText
@@ -121,6 +125,76 @@ class SmokeTest {
             }
         }
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
+    /** Nota patokan dalam kondisi foto yang kurang bagus. */
+    @Test
+    fun notaPatokanKondisiSulit() {
+        val client = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val source = asset("nota-6-tabel.jpg")
+        val w = source.width.toFloat()
+        val h = source.height.toFloat()
+
+        fun draw(matrix: Matrix, paint: Paint? = null): Bitmap {
+            val area = RectF(0f, 0f, w, h).also { matrix.mapRect(it) }
+            val page = Bitmap.createBitmap(
+                area.width().toInt() + 80, area.height().toInt() + 80, Bitmap.Config.ARGB_8888
+            )
+            val shifted = Matrix(matrix).apply { postTranslate(40 - area.left, 40 - area.top) }
+            Canvas(page).apply {
+                drawColor(Color.rgb(90, 70, 55))
+                drawBitmap(source, shifted, paint ?: Paint(Paint.FILTER_BITMAP_FLAG))
+            }
+            return page
+        }
+        fun rotate(degrees: Float) = draw(Matrix().apply { postRotate(degrees) })
+        fun scale(factor: Float) =
+            Bitmap.createScaledBitmap(source, (w * factor).toInt(), (h * factor).toInt(), true)
+        // Sudut kertas digeser, seperti difoto dari bawah atau dari samping
+        fun perspective(vararg corners: Float) = draw(Matrix().apply {
+            setPolyToPoly(floatArrayOf(0f, 0f, w, 0f, w, h, 0f, h), 0, corners, 0, 4)
+        })
+        val dim = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setScale(0.45f, 0.42f, 0.38f, 1f) })
+        }
+
+        val variants = listOf(
+            "miring8" to rotate(8f),
+            "miring-12" to rotate(-12f),
+            "kecil70" to scale(0.7f),
+            "kecil50" to scale(0.5f),
+            "buram" to Bitmap.createScaledBitmap(scale(0.45f), w.toInt(), h.toInt(), true),
+            "gelap" to draw(Matrix(), dim),
+            "dariBawah" to perspective(w * 0.08f, 0f, w * 0.92f, 0f, w, h, 0f, h),
+            "dariSamping" to perspective(0f, 0f, w, h * 0.06f, w, h * 0.94f, 0f, h),
+            "menyerong" to perspective(w * 0.05f, h * 0.02f, w * 0.97f, 0f, w, h * 0.96f, 0f, h)
+        )
+        val names = listOf(
+            "Semen", "Pasir", "Batu", "Bata", "Besi", "Paku", "Cat", "Kabel", "Fitting", "Saklar"
+        )
+        val failures = mutableListOf<String>()
+        for ((label, page) in variants) {
+            val rows = Ocr.toRows(Tasks.await(client.process(InputImage.fromBitmap(page, 0))))
+            val result = ReceiptParser.parse(rows)
+            val found = result.items.map { it.name.replace(" ", "") }
+            val ok = result.store.contains("MAJU") && result.date == "2026-11-27" &&
+                result.total == 2997000L && result.items.sumOf { it.subtotal } == 2727000L &&
+                found.size == names.size && found.zip(names).all { (a, b) -> a.startsWith(b) }
+            if (!ok) {
+                // Cukup ringkas supaya semua kegagalan muat di laporan
+                failures.add(
+                    "[$label] ${result.store};${result.date};${result.total};" +
+                        "${result.items.sumOf { it.subtotal }};${found.size} :: " +
+                        rows.drop(8).take(14).joinToString("/")
+                )
+            }
+        }
+        assertTrue(
+            "${failures.size} dari ${variants.size} gagal: " +
+                failures.joinToString(" ") { it.substringBefore(" :: ") } + "\n" +
+                failures.joinToString("\n"),
+            failures.isEmpty()
+        )
     }
 
     @Test
