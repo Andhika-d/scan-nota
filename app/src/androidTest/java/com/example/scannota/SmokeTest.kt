@@ -197,6 +197,72 @@ class SmokeTest {
         )
     }
 
+    /** Nota berkolom satuan dan kode barang, dengan nama barang dua baris. */
+    @Test
+    fun notaKolomKodeBarang() {
+        val client = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val source = asset("nota-7-kode.jpg")
+        val w = source.width.toFloat()
+        val h = source.height.toFloat()
+
+        fun draw(matrix: Matrix): Bitmap {
+            val area = RectF(0f, 0f, w, h).also { matrix.mapRect(it) }
+            val page = Bitmap.createBitmap(
+                area.width().toInt() + 80, area.height().toInt() + 80, Bitmap.Config.ARGB_8888
+            )
+            val shifted = Matrix(matrix).apply { postTranslate(40 - area.left, 40 - area.top) }
+            Canvas(page).apply {
+                drawColor(Color.rgb(90, 70, 55))
+                drawBitmap(source, shifted, Paint(Paint.FILTER_BITMAP_FLAG))
+            }
+            return page
+        }
+        fun rotate(degrees: Float) = draw(Matrix().apply { postRotate(degrees) })
+        fun perspective(vararg corners: Float) = draw(Matrix().apply {
+            setPolyToPoly(floatArrayOf(0f, 0f, w, 0f, w, h, 0f, h), 0, corners, 0, 4)
+        })
+        val jpeg = File(context.cacheDir, "uji.jpg")
+        Photos.save(source, jpeg)
+
+        val variants = listOf(
+            "asli" to source,
+            "jpeg" to Photos.load(jpeg)!!,
+            "miring4" to rotate(4f),
+            "miring-3" to rotate(-3f),
+            "miring8" to rotate(8f),
+            "kecil70" to Bitmap.createScaledBitmap(source, (w * 0.7f).toInt(), (h * 0.7f).toInt(), true),
+            "dariBawah" to perspective(w * 0.08f, 0f, w * 0.92f, 0f, w, h, 0f, h),
+            "menyerong" to perspective(w * 0.05f, h * 0.02f, w * 0.97f, 0f, w, h * 0.96f, 0f, h)
+        )
+        val names = listOf("Besi", "Atap", "Sekrup", "Semen", "Wiremesh")
+        val numbers = listOf(12 to 105000L, 20 to 78000L, 10 to 300L, 5 to 72000L, 2 to 525000L)
+        val failures = mutableListOf<String>()
+        for ((label, page) in variants) {
+            val rows = Ocr.toRows(Tasks.await(client.process(InputImage.fromBitmap(page, 0))))
+            val result = ReceiptParser.parse(rows)
+            val found = result.items.map { it.name }
+            val ok = result.store.contains("CONTOH 2") && result.date == "2024-05-26" &&
+                result.total == 4233000L &&
+                result.items.map { it.qty to it.price } == numbers &&
+                found.zip(names).all { (a, b) -> a.startsWith(b) } &&
+                // Baris kedua nama barang ikut tersambung
+                found[1].contains("m") && found[4].contains("54")
+            if (!ok) {
+                failures.add(
+                    "[$label] ${result.store};${result.date};${result.total};" +
+                        result.items.joinToString(",") { "${it.name}=${it.qty}x${it.price}" } +
+                        " :: " + rows.joinToString("/")
+                )
+            }
+        }
+        assertTrue(
+            "${failures.size} dari ${variants.size} gagal: " +
+                failures.joinToString(" ") { it.substringBefore("]") + "]" } + "\n" +
+                failures.joinToString("\n"),
+            failures.isEmpty()
+        )
+    }
+
     @Test
     fun scanSimpanRekapDanEkspor() {
         signIn()

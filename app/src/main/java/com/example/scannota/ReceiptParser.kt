@@ -68,17 +68,50 @@ object ReceiptParser {
     private val tableEnd = Regex("""^(sub\s*total|grand\s*total|total|jumlah)\b""", RegexOption.IGNORE_CASE)
     private val rowNumber = Regex("""^\d{1,3}[.)]?\s+(?=.*[A-Za-z]{2})""")
 
+    // Format nota toko dengan kolom "Banyaknya | Nama Barang | Kode Barang | Harga | Jumlah"
+    private val codeColumn = Regex("""\b(kode|banyak)""", RegexOption.IGNORE_CASE)
+    private const val UNIT =
+        """(?:batang|btg|lembar|lbr|buah|bh|sak|zak|roll|rol|pcs|pc|kg|dus|box|set|unit|meter|mtr|liter|ltr|kaleng|klg|pail|galon|ikat|bungkus|bks|pak|pack|lusin|biji|pasang|keping|botol|btl|truk|rit|m3|m)"""
+    // "12 batang" di awal baris; angka satu digit kadang terbaca sebagai huruf
+    private val leadingQty = Regex(
+        """^(\d[\dOoIl]{0,2}\s*|[SIlOZ|]\s+)$UNIT\b\.?\s*""", RegexOption.IGNORE_CASE
+    )
+    // Kode barang seperti HLL44 atau SR1275, di ujung kiri harga
+    private val itemCode = Regex("""(?:^|\s+)[A-Z]{1,5}[-.]?[0-9O]{1,6}[A-Z]?$""")
+    private val twoAmounts = Regex("""^(?:(.*?)\s+)?($MONEY)\s+($MONEY)$""")
+    private val headerWords = Regex(
+        """^((banyak(nya)?|nya|nama|kode|barang|harga|jumlah)\W*)+$""", RegexOption.IGNORE_CASE
+    )
+    // Lanjutan nama barang di baris kedua: "x 1,1 m" atau "(2,1 m x 54 m)"
+    private val continuation = Regex("""^(\(|[xX×]\s|\d|[a-z])""")
+    private val codeTableEnd = Regex(
+        """\b(jumlah|total|perhatian|tanda\s*terima|hormat\s*kami)\b""", RegexOption.IGNORE_CASE
+    )
+    // "TB. Maju", "UD Sumber", boleh didahului sisa tulisan logo
+    private val shopName = Regex(
+        """^(?:\S{1,4}\s+)?((?:TB|UD|CV|PD|PT|Toko)(?:\.\s*|\s+)[A-Za-z0-9].*)$""",
+        RegexOption.IGNORE_CASE
+    )
+    // Tulisan di kolom kanan yang ikut tersambung ke nama toko
+    private val afterShopName = Regex(
+        """\s+(?:[A-Za-z]+\s*,\s*(?:[\d.…]|$).*|KEPADA\b.*|Tuan\b.*)$""", RegexOption.IGNORE_CASE
+    )
+
     // "Nama 18.000"
     private val priceOnly = Regex("""^(.*?)\s+($MONEY)$""")
 
     fun parse(lines: List<String>): Receipt {
         val clean = lines.map { tidy(it) }.filter { it.isNotEmpty() }
 
+        // Nama toko ada di atas tabel
+        val top = clean.takeWhile { !tableHeader.containsMatchIn(it) }
         val store = clean.firstNotNullOfOrNull { seller.find(it)?.groupValues?.get(1)?.trim() }
-            ?: clean
-                // Nama toko ada di atas tabel, dan bukan baris yang berakhir dengan harga
-                .takeWhile { !tableHeader.containsMatchIn(it) }
-                .firstOrNull {
+            ?: top.firstNotNullOfOrNull { line ->
+                shopName.find(line)?.groupValues?.get(1)?.replace(afterShopName, "")?.trim()
+                    ?.takeIf { !priceOnly.matches(it) }
+            }
+            // Selain itu baris pertama yang bukan harga, tanggal, atau judul umum
+            ?: top.firstOrNull {
                     hasName(it) && !notStore.matches(it) && findDate(it) == null &&
                         !priceOnly.matches(it)
                 }
@@ -131,6 +164,13 @@ object ReceiptParser {
         val items = mutableListOf<Pair<Item, String>>()
         var pendingName = ""
         val header = lines.indexOfFirst { tableHeader.containsMatchIn(it) }
+        // Judul kolom bisa terpecah ke beberapa baris di sekitar "Nama Barang"
+        if (header >= 0 &&
+            lines.subList(maxOf(header - 2, 0), minOf(header + 3, lines.size))
+                .any { codeColumn.containsMatchIn(it) }
+        ) {
+            return parseCodeTable(lines.drop(header + 1)).map { it to "" }
+        }
         val numbered = header >= 0 && lines[header].startsWith("no", ignoreCase = true)
         for (raw in lines.drop(header + 1)) {
             if (header >= 0 && items.isNotEmpty() && tableEnd.containsMatchIn(raw)) break
@@ -150,6 +190,60 @@ object ReceiptParser {
             pendingName = if (item == null && broken == null && hasName(line)) line else ""
         }
         return items
+    }
+
+    /** Nama barang bisa dua baris, sedangkan angkanya ada di tengah-tengah. */
+    private fun parseCodeTable(lines: List<String>): List<Item> {
+        val items = mutableListOf<Item>()
+        val pending = mutableListOf<String>()
+        for (line in lines) {
+            if (items.isNotEmpty() && codeTableEnd.containsMatchIn(line)) break
+            if (headerWords.matches(line) || itemCode.matches(line)) continue
+            val row = codeRow(line)
+            if (row != null) {
+                val name = (pending + row.name).joinToString(" ").trim()
+                items.add(row.copy(name = cleanName(name)))
+                pending.clear()
+                continue
+            }
+            val text = line.replaceFirst(leadingQty, "").trim()
+            if (text.isEmpty()) continue
+            val last = items.lastOrNull()
+            if (last != null && pending.isEmpty() &&
+                (last.name.isEmpty() || continuation.containsMatchIn(text))
+            ) {
+                items[items.lastIndex] = last.copy(name = "${last.name} $text".trim())
+            } else if (hasName(text) || pending.isNotEmpty() && continuation.containsMatchIn(text)) {
+                pending.add(text)
+            }
+        }
+        return items.map { if (it.name.isEmpty()) it.copy(name = "Barang") else it }
+    }
+
+    /** Baris yang memuat harga. Jumlah barang dihitung dari harga dan subtotalnya. */
+    private fun codeRow(line: String): Item? {
+        fun quantity(text: String) = leadingQty.find(text)?.groupValues?.get(1)?.trim()
+            ?.let { digits(it).replace('S', '5').toIntOrNull() }
+            ?.takeIf { it > 0 }
+        fun name(text: String) =
+            text.replaceFirst(leadingQty, "").trim().replace(itemCode, "").trim()
+
+        twoAmounts.find(line)?.let { m ->
+            val before = m.groupValues[1]
+            val price = amount(m.groupValues[2])
+            val sum = amount(m.groupValues[3])
+            if (price > 0 && sum % price == 0L && sum / price in 1..999) {
+                return Item(name(before), (sum / price).toInt(), price)
+            }
+            // Salah satu angka salah baca: pakai jumlah yang tertulis
+            return quantity(before)?.let { Item(name(before), it, price) }
+        }
+        // Cuma subtotal yang terbaca
+        val m = priceOnly.find(line) ?: return null
+        val before = m.groupValues[1]
+        val qty = quantity(before) ?: return null
+        val sum = amount(m.groupValues[2])
+        return if (sum % qty == 0L) Item(name(before), qty, sum / qty) else null
     }
 
     /**
