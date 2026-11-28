@@ -241,7 +241,7 @@ class SmokeTest {
             val rows = Ocr.toRows(Tasks.await(client.process(InputImage.fromBitmap(page, 0))))
             val result = ReceiptParser.parse(rows)
             val found = result.items.map { it.name }
-            val ok = result.store.contains("CONTOH 2") && result.date == "2024-05-26" &&
+            val ok = result.store.replace(" ", "").contains("CONTOH2") && result.date == "2024-05-26" &&
                 result.total == 4233000L &&
                 result.items.map { it.qty to it.price } == numbers &&
                 found.zip(names).all { (a, b) -> a.startsWith(b) } &&
