@@ -185,7 +185,7 @@ class SmokeTest {
                 failures.add(
                     "[$label] ${result.store};${result.date};${result.total};" +
                         "${result.items.sumOf { it.subtotal }};${found.size} :: " +
-                        rows.drop(8).take(14).joinToString("/")
+                        rows.takeLast(14).joinToString("/")
                 )
             }
         }
