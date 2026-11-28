@@ -106,7 +106,10 @@ object ReceiptParser {
         val change = clean.firstOrNull { changeWord.containsMatchIn(it) }?.let { lastAmount(it) }
         val confirmed = paid != null && change != null && sum > 0 && paid - change == sum
 
-        return Receipt(store, date, if (confirmed) sum else total ?: sum, items)
+        // Baris total tidak terbaca? Uang tunai dikurangi kembalian adalah totalnya
+        val fromCash = if (paid != null && change != null && paid > change) paid - change else null
+
+        return Receipt(store, date, if (confirmed) sum else total ?: fromCash ?: sum, items)
     }
 
     /** Rapikan salah baca yang umum: "Rp", "75. 000", dan "18.5OO". */
