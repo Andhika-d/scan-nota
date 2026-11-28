@@ -83,10 +83,14 @@ class SmokeTest {
             Triple("nota-2-warung.png", 64000L, listOf("Nasi", "Es", "Ayam")),
             Triple("nota-3-restoran.png", 137445L, listOf("Sate", "Sop", "Jus", "Air")),
             Triple("nota-4-apotek.png", 96500L, listOf("Vitamin", "Masker", "Minyak")),
-            Triple("nota-5-toko-bangunan.png", 2755000L, listOf("Semen", "Cat", "Pipa"))
+            Triple("nota-5-toko-bangunan.png", 2755000L, listOf("Semen", "Cat", "Pipa")),
+            Triple(
+                "nota-6-tabel.jpg", 2997000L,
+                listOf("Semen", "Pasir", "Batu", "Bata", "Besi", "Paku", "Cat", "Kabel", "Fitting", "Saklar")
+            )
         )
         // Jumlah subtotal barang yang seharusnya (restoran dan apotek: sebelum pajak/diskon)
-        val sums = listOf(143000L, 87800L, 64000L, 119000L, 101500L, 2755000L)
+        val sums = listOf(143000L, 87800L, 64000L, 119000L, 101500L, 2755000L, 2727000L)
         val failures = mutableListOf<String>()
         cases.forEachIndexed { index, (name, total, items) ->
             val source = asset(name)

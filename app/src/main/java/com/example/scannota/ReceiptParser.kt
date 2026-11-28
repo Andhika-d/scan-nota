@@ -41,6 +41,14 @@ object ReceiptParser {
     private val brokenPrice = Regex("""^(.*?)\s+(\d{1,3}[.,]\d{1,2})$""")
     private val spacedThousand = Regex("""(\d)(?:\s+([.,])|([.,])\s+)(?=[0-9OoIl]{3}(?![0-9A-Za-z]))""")
 
+    // "18x Nama 35.000 630.000" (jumlah di depan, umum di nota toko)
+    private val qtyFirst =
+        Regex("""^(\d{1,3})\s*[xX×]\s+(.*?)\s+($MONEY)\s+($MONEY)$""")
+    // Judul tabel barang. Kalau ada, barang hanya dicari di bawahnya sampai baris total
+    private val tableHeader = Regex("""\bnama\s*barang\b""", RegexOption.IGNORE_CASE)
+    private val tableEnd = Regex("""^(sub\s*total|grand\s*total|total|jumlah)\b""", RegexOption.IGNORE_CASE)
+    private val rowNumber = Regex("""^\d{1,3}[.)]?\s+(?=.*[A-Za-z]{2})""")
+
     // "Nama 18.000"
     private val priceOnly = Regex("""^(.*?)\s+($MONEY)$""")
 
@@ -86,7 +94,11 @@ object ReceiptParser {
         // Pasangan barang dan angka harga yang terpotong (kosong kalau harganya utuh)
         val items = mutableListOf<Pair<Item, String>>()
         var pendingName = ""
-        for (line in lines) {
+        val header = lines.indexOfFirst { tableHeader.containsMatchIn(it) }
+        val numbered = header >= 0 && lines[header].startsWith("no", ignoreCase = true)
+        for (raw in lines.drop(header + 1)) {
+            if (header >= 0 && items.isNotEmpty() && tableEnd.containsMatchIn(raw)) break
+            val line = if (numbered) raw.replaceFirst(rowNumber, "") else raw
             if (line == store || notItem.containsMatchIn(line) || findDate(line) != null) {
                 pendingName = ""
                 continue
@@ -134,6 +146,12 @@ object ReceiptParser {
             }
             return if (qty > 0) Item(cleanName(pendingName), qty, unit) else null
         }
+        qtyFirst.find(line)?.let { m ->
+            val qty = m.groupValues[1].toInt()
+            val name = cleanName(m.groupValues[2])
+            val unit = amount(m.groupValues[3])
+            if (hasName(name) && qty * unit == amount(m.groupValues[4])) return Item(name, qty, unit)
+        }
         qtyTimes.find(line)?.let { m ->
             val name = cleanName(m.groupValues[1]).takeIf { hasName(it) } ?: pendingName
             val qty = m.groupValues[2].toInt()
@@ -147,9 +165,17 @@ object ReceiptParser {
             if (hasName(name) && qty > 0 && qty * unit == sum) return Item(name, qty, unit)
         }
         val m = priceOnly.find(line) ?: return null
-        // Buang angka harga lain yang tersisa di ujung nama
-        val name = cleanName(m.groupValues[1].replace(Regex("""(\s+$MONEY)+$"""), ""))
-        return if (hasName(name)) Item(name, 1, amount(m.groupValues[2])) else null
+        // Buang angka harga lain yang tersisa di ujung nama, juga angka 1 yang terbaca "l"
+        val before = m.groupValues[1]
+        val name = cleanName(
+            before.replace(Regex("""(\s+$MONEY)+$"""), "").replace(Regex("""\s+[lI|]$"""), "")
+        )
+        if (!hasName(name)) return null
+        val total = amount(m.groupValues[2])
+        // Kolom jumlah sering tidak terbaca (cuma satu angka), hitung dari harga satuan
+        val unit = Regex("""\s($MONEY)$""").find(before)?.let { amount(it.groupValues[1]) } ?: 0
+        val qty = if (unit > 0 && total % unit == 0L) total / unit else 0
+        return if (qty in 2..999) Item(name, qty.toInt(), unit) else Item(name, 1, total)
     }
 
     private fun hasName(text: String) = text.count { it.isLetter() } >= 3
